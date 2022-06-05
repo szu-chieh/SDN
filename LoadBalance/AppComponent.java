@@ -190,10 +190,10 @@ public class AppComponent implements SomeInterface {
         .matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId);
       
 
-        log.info("load balancing app start");
+        log.info("Load Balancing App Started");
 
         // 在app啟動時先install一個flow rules讓所有destination ip = fake ip的封包packet in，這邊可以透過packetService來完成
-
+        
 
         Ip4Address fakeIP = IpAddress.valueOf("172.27.0.114").getIp4Address();
 
@@ -211,8 +211,7 @@ public class AppComponent implements SomeInterface {
 
         
         // 宣告flowrule物件
-        ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder() 
-
+        ForwardingObjective forwardingObjective_IPpacket = DefaultForwardingObjective.builder() 
         .withSelector(selectorBuilder_getIPv4.build())  // 前面設定好的selector
         .withTreatment(treatment.build())
         .withPriority(50000)  // 設定高priority讓rule之後能夠優先執行
@@ -221,13 +220,14 @@ public class AppComponent implements SomeInterface {
         .makeTemporary(20) //timeout
         .add();
 
+        log.info("Setting of IPv4 packet done.");
 
         // selector 2: 設定取得arp封包
         TrafficSelector.Builder selectorBuilder_getARP = DefaultTrafficSelector.builder();
         selectorBuilder_getARP.matchIPDst(IpPrefix.valueOf("172.27.0.114"))
                         .matchEthType(Ethernet.TYPE_ARP);
              
-        forwardingObjective = DefaultForwardingObjective.builder()
+        ForwardingObjective forwardingObjective_ARPpacket = DefaultForwardingObjective.builder()
         .withSelector(selectorBuilder_getARP.build())  // 前面設定好的selector
         .withTreatment(treatment.build())
         .withPriority(50000)  // 設定高priority讓rule之後能夠優先執行
@@ -236,9 +236,11 @@ public class AppComponent implements SomeInterface {
         .makeTemporary(20) //timeout
         .add();
         
+        log.info("Setting of ARP packet done.");
+
         // 在該封包進來的device上安裝flow rules
         // 假設此封包從sw1進到controller，則在sw1讓安裝該flow rule，讓之後所有經過sw1且destination ip=fake ip的封包都從設定好的port傳出去
-        flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective);
+        flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_IPpacket);
         packetService.addProcessor(processor, PacketProcessor.director(2)); // 註冊eventhandler
         log.info("Load Balancing App Started");
 
