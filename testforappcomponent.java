@@ -192,7 +192,7 @@ public class AppComponent implements SomeInterface {
         // 在app啟動時先install一個flow rules讓所有destination ip = fake ip的封包packet in，這邊可以透過packetService來完成
 
 
-        Ip4Address fakeIP = IpAddress.valueOf("172.27.0.114/32").getIp4Address();
+        //Ip4Address fakeIP = IpAddress.valueOf("172.27.0.114/32").getIp4Address();
 
         ///// 建立treatment: 將過濾過的封包packet in到controller /////
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
@@ -279,12 +279,14 @@ public class AppComponent implements SomeInterface {
             // 這邊進行arp reply只是因為這是一個必要的回覆過程，否則arp的要求會一直懸在網路環境中
             if (ethPkt.getEtherType() == Ethernet.TYPE_ARP) {
 
+                log.info("get ARP packet!");
+
                 // 分析arp request packet
                 ARP ARPrequest = (ARP) ethPkt.getPayload(); // 解開ethernet packet取得arp payload
                 IpAddress dstIP = IpAddress.valueOf(IpAddress.Version.valueOf("INET"), ARPrequest.getTargetProtocolAddress());
                 
                 // 確認dstip是送往fake ip且為arp request
-                if (dstIP.equals(IpAddress.valueOf("172.27.0.114")) && ARPrequest.getOpCode() == ARP.OP_REQUEST) {
+                if (dstIP.equals(IpAddress.valueOf("10.0.0.6")) && ARPrequest.getOpCode() == ARP.OP_REQUEST) {
 
                     // set ARP reply packet, 這邊大部份的資訊可以直接從request封包中取得，重點是要設定假的Mac address
                     // 要注意request封包的來源位置對於reply來說是dst address
@@ -319,7 +321,7 @@ public class AppComponent implements SomeInterface {
             log.info("finished arp process");
             if (ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
                 IPv4 ipacket = (IPv4) ethPkt.getPayload();
-                if(ipacket.getDestinationAddress() == Ip4Address.valueOf("172.27.0.114").toInt()){
+                if(ipacket.getDestinationAddress() == Ip4Address.valueOf("10.0.0.6").toInt()){
                     log.info("ipv4 with fakeip packet in");
                 }
         
