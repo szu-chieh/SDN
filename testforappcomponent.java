@@ -184,8 +184,13 @@ public class AppComponent implements SomeInterface {
         // about packetservice:
         // http://api.onosproject.org/2.3.0/apidocs/org/onosproject/net/packet/PacketService.html?msclkid=bf0b93eca9dd11ec96e999d6e0a7f869
         appId = coreService.registerApplication("nthu.wmnet.loadbalance"); // 註冊app
-      
         packetService.addProcessor(processor, PacketProcessor.director(2)); // 註冊eventhandler
+        
+        packetService.requestPackets(DefaultTrafficSelector.builder()
+        .matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId);  
+        packetService.requestPackets(DefaultTrafficSelector.builder()
+        .matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId);
+
 
         log.info("load balancing app start");
 
