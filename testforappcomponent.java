@@ -184,18 +184,15 @@ public class AppComponent implements SomeInterface {
         // about packetservice:
         // http://api.onosproject.org/2.3.0/apidocs/org/onosproject/net/packet/PacketService.html?msclkid=bf0b93eca9dd11ec96e999d6e0a7f869
         appId = coreService.registerApplication("nthu.wmnet.loadbalance"); // 註冊app
-        packetService.requestPackets(DefaultTrafficSelector.builder()
-        .matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId);  
-        packetService.requestPackets(DefaultTrafficSelector.builder()
-        .matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId);
       
+        packetService.addProcessor(processor, PacketProcessor.director(2)); // 註冊eventhandler
 
         log.info("load balancing app start");
 
         // 在app啟動時先install一個flow rules讓所有destination ip = fake ip的封包packet in，這邊可以透過packetService來完成
 
 
-        Ip4Address fakeIP = IpAddress.valueOf("172.27.0.114").getIp4Address();
+        Ip4Address fakeIP = IpAddress.valueOf("172.27.0.114/32").getIp4Address();
 
         ///// 建立treatment: 將過濾過的封包packet in到controller /////
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
@@ -206,43 +203,47 @@ public class AppComponent implements SomeInterface {
 
         // selector 1: 設定取得ipv4封包
         TrafficSelector.Builder selectorBuilder_getIPv4 = DefaultTrafficSelector.builder();
-        selectorBuilder_getIPv4.matchIPDst(IpPrefix.valueOf("172.27.0.114"))
+        selectorBuilder_getIPv4.matchIPDst(IpPrefix.valueOf("10.0.0.6/32"))
                         .matchEthType(Ethernet.TYPE_IPV4);
 
         
         // 宣告flowrule物件
-        ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder() 
-
+        ForwardingObjective forwardingObjective_IPPacket = DefaultForwardingObjective.builder() 
         .withSelector(selectorBuilder_getIPv4.build())  // 前面設定好的selector
         .withTreatment(treatment.build())
-        .withPriority(50000)  // 設定高priority讓rule之後能夠優先執行
+        .withPriority(30)  // 設定高priority讓rule之後能夠優先執行
         .withFlag(ForwardingObjective.Flag.VERSATILE)
         .fromApp(appId)
         .makeTemporary(20) //timeout
         .add();
 
-
-        // selector 2: 設定取得arp封包
-        TrafficSelector.Builder selectorBuilder_getARP = DefaultTrafficSelector.builder();
-        selectorBuilder_getARP.matchIPDst(IpPrefix.valueOf("172.27.0.114"))
-                        .matchEthType(Ethernet.TYPE_ARP);
-             
-        forwardingObjective = DefaultForwardingObjective.builder()
-        .withSelector(selectorBuilder_getARP.build())  // 前面設定好的selector
-        .withTreatment(treatment.build())
-        .withPriority(50000)  // 設定高priority讓rule之後能夠優先執行
-        .withFlag(ForwardingObjective.Flag.VERSATILE)
-        .fromApp(appId)
-        .makeTemporary(20) //timeout
-        .add();
-        
-        
+        log.info("Setting Flow rule of get IP packet with Fake IP: Done!");
         
         // 在該封包進來的device上安裝flow rules
         // 假設此封包從sw1進到controller，則在sw1讓安裝該flow rule，讓之後所有經過sw1且destination ip=fake ip的封包都從設定好的port傳出去
-        flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective);
-        packetService.addProcessor(processor, PacketProcessor.director(2)); // 註冊eventhandler
-        log.info("Load Balancing App Started");
+        flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_IPPacket);
+        log.info("Flow rule: getting IP packet with Fake IP installed!");
+
+        // selector 2: 設定取得arp封包
+        TrafficSelector.Builder selectorBuilder_getARP = DefaultTrafficSelector.builder();
+        selectorBuilder_getARP.matchIPDst(IpPrefix.valueOf("10.0.0.6/32"))
+                        .matchEthType(Ethernet.TYPE_ARP);
+        
+
+        ForwardingObjective forwardingObjective_ARPPacket = DefaultForwardingObjective.builder()
+        .withSelector(selectorBuilder_getARP.build())  // 前面設定好的selector
+        .withTreatment(treatment.build())
+        .withPriority(30)  // 設定高priority讓rule之後能夠優先執行
+        .withFlag(ForwardingObjective.Flag.VERSATILE)
+        .fromApp(appId)
+        .makeTemporary(20) //timeout
+        .add();
+        
+        log.info("Setting Flow rule of get ARP packet with Fake IP: Done!");
+        
+        flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_ARPPacket);
+        log.info("Flow rule: getting ARP packet with Fake IP installed!");
+        
 
     }
   
