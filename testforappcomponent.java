@@ -186,12 +186,12 @@ public class AppComponent implements SomeInterface {
         appId = coreService.registerApplication("nthu.wmnet.loadbalance"); // 註冊app
         packetService.addProcessor(processor, PacketProcessor.director(2)); // 註冊eventhandler
         
-        packetService.requestPackets(DefaultTrafficSelector.builder()
-        .matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId);  
-        packetService.requestPackets(DefaultTrafficSelector.builder()
-        .matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId);
+        // packetService.requestPackets(DefaultTrafficSelector.builder()
+        // .matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId);  
+        // packetService.requestPackets(DefaultTrafficSelector.builder()
+        // .matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId);
 
-
+        
         log.info("load balancing app start");
 
         // 在app啟動時先install一個flow rules讓所有destination ip = fake ip的封包packet in，這邊可以透過packetService來完成
@@ -208,8 +208,8 @@ public class AppComponent implements SomeInterface {
 
         // selector 1: 設定取得ipv4封包
         TrafficSelector.Builder selectorBuilder_getIPv4 = DefaultTrafficSelector.builder();
-        selectorBuilder_getIPv4.matchIPDst(IpPrefix.valueOf("10.0.0.6/32"))
-                        .matchEthType(Ethernet.TYPE_IPV4);
+        selectorBuilder_getIPv4.matchEthType(Ethernet.TYPE_IPV4)
+                        .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
 
         
         // 宣告flowrule物件
@@ -231,8 +231,8 @@ public class AppComponent implements SomeInterface {
 
         // selector 2: 設定取得arp封包
         TrafficSelector.Builder selectorBuilder_getARP = DefaultTrafficSelector.builder();
-        selectorBuilder_getARP.matchIPDst(IpPrefix.valueOf("10.0.0.6/32"))
-                        .matchEthType(Ethernet.TYPE_ARP);
+        selectorBuilder_getARP.matchEthType(Ethernet.TYPE_ARP)
+                            .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
         
 
         ForwardingObjective forwardingObjective_ARPPacket = DefaultForwardingObjective.builder()
@@ -249,7 +249,6 @@ public class AppComponent implements SomeInterface {
         flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_ARPPacket);
         log.info("Flow rule: getting ARP packet with Fake IP installed!");
         
-
     }
   
 
