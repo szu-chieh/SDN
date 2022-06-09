@@ -219,7 +219,7 @@ public class AppComponent implements SomeInterface {
         .withPriority(30)  // 設定高priority讓rule之後能夠優先執行
         .withFlag(ForwardingObjective.Flag.VERSATILE)
         .fromApp(appId)
-        .makeTemporary(20) //timeout
+        .makePermanent() //timeout
         .add();
 
         log.info("Setting Flow rule of get IP packet with Fake IP: Done!");
@@ -241,7 +241,7 @@ public class AppComponent implements SomeInterface {
         .withPriority(30)  // 設定高priority讓rule之後能夠優先執行
         .withFlag(ForwardingObjective.Flag.VERSATILE)
         .fromApp(appId)
-        .makeTemporary(20) //timeout
+        .makePermanent() //timeout
         .add();
         
         log.info("Setting Flow rule of get ARP packet with Fake IP: Done!");
