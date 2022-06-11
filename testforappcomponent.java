@@ -229,25 +229,28 @@ public class AppComponent implements SomeInterface {
         flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_IPPacket);
         log.info("Flow rule: getting IP packet with Fake IP installed!");
 
-        // selector 2: 設定取得arp封包
-        TrafficSelector.Builder selectorBuilder_getARP = DefaultTrafficSelector.builder();
-        selectorBuilder_getARP.matchEthType(Ethernet.TYPE_ARP)
-                            .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
+        // selector 2: 設定取得arp封包 (這邊直接取得所有的arp封包就行)
+        packetService.requestPackets(DefaultTrafficSelector.builder()
+        .matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId);
+
+        // TrafficSelector.Builder selectorBuilder_getARP = DefaultTrafficSelector.builder();
+        // selectorBuilder_getARP.matchEthType(Ethernet.TYPE_ARP)
+        //                     .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
         
 
-        ForwardingObjective forwardingObjective_ARPPacket = DefaultForwardingObjective.builder()
-        .withSelector(selectorBuilder_getARP.build())  // 前面設定好的selector
-        .withTreatment(treatment.build())
-        .withPriority(30)  // 設定高priority讓rule之後能夠優先執行
-        .withFlag(ForwardingObjective.Flag.VERSATILE)
-        .fromApp(appId)
-        .makePermanent() //timeout
-        .add();
+        // ForwardingObjective forwardingObjective_ARPPacket = DefaultForwardingObjective.builder()
+        // .withSelector(selectorBuilder_getARP.build())  // 前面設定好的selector
+        // .withTreatment(treatment.build())
+        // .withPriority(30)  // 設定高priority讓rule之後能夠優先執行
+        // .withFlag(ForwardingObjective.Flag.VERSATILE)
+        // .fromApp(appId)
+        // .makePermanent() //timeout
+        // .add();
         
-        log.info("Setting Flow rule of get ARP packet with Fake IP: Done!");
+        // log.info("Setting Flow rule of get ARP packet with Fake IP: Done!");
         
-        flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_ARPPacket);
-        log.info("Flow rule: getting ARP packet with Fake IP installed!");
+        // flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_ARPPacket);
+         log.info("Flow rule: getting ARP packet installed!");
         
     }
   
@@ -270,13 +273,14 @@ public class AppComponent implements SomeInterface {
             // 接收到的封包需要一層一層解析，從inboundpacket到Ethernet
             InboundPacket pkt = context.inPacket();
             Ethernet ethPkt = pkt.parsed();
+
         
 
             if (ethPkt == null) {
                 return;
             }
 
-
+            
             // 現在會進到controller中的封包就只有兩種，dst ip = fake ip的ipv4封包或者dst ip = fake ip的arp封包
 
             // step 1. 檢查是否為arp封包, if dst ip = fake ip, then install flow rules, and send ARP reply with fake MAC address
@@ -291,6 +295,7 @@ public class AppComponent implements SomeInterface {
                 
                 // 確認dstip是送往fake ip且為arp request
                 if (dstIP.equals(IpAddress.valueOf("10.0.0.6")) && ARPrequest.getOpCode() == ARP.OP_REQUEST) {
+                    log.info("get ARP request packet.");
 
                     // set ARP reply packet, 這邊大部份的資訊可以直接從request封包中取得，重點是要設定假的Mac address
                     // 要注意request封包的來源位置對於reply來說是dst address
@@ -319,16 +324,43 @@ public class AppComponent implements SomeInterface {
                     // 把arp reply封包送出controller
                     packetService.emit(outpacket);
 
-                }   
-            }
-            
-            log.info("finished arp process");
-            if (ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
+                }
+                
+                log.info("finished arp process");
+            } 
+            else if (ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
+
+                // 解析ipv4封包
                 IPv4 ipacket = (IPv4) ethPkt.getPayload();
+
+                // 若接收到帶有fake ip的ipv4封包則install flow rules
                 if(ipacket.getDestinationAddress() == Ip4Address.valueOf("10.0.0.6").toInt()){
                     log.info("ipv4 with fakeip packet in");
+
+                    PortNumber InPort = pkt.receivedFrom().port();
+                    int inport_number = Integer.parseInt(InPort.toString());
+
+                    MacAddress srcMac = ethPkt.getSourceMAC();
+                    HostId srcID = HostId.hostId(srcMac);
+
+                    log.info("PortNumber = ", inport_number);
+                    if (inport_numbe%2 == 1){
+                        // 分配到h1
+                        PortNumber port_h1 = PortNumber.fromString(1);
+                        HostId dstID = HostId.hostId("A2:FE:75:16:6A:17");
+                        installRule(context, srcID, dstID, port_h1);
+
+                    }
+                    else{
+                        // 分配到h2
+                        PortNumber port_h2 = PortNumber.fromString(2);
+                        HostId dstID = HostId.hostId("5E:32:AA:00:A3:5A");
+
+                        installRule(context, srcID, dstID, port_h2);
+                    }
+
                 }
-        
+                log.info("finished ipv4 process");
             }
 
             return;
@@ -341,12 +373,13 @@ public class AppComponent implements SomeInterface {
     
       Ethernet inPkt = context.inPacket().parsed();         // 分析接收到的封包
 
-      // 宣告traffic selector
-      TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
 
       Host dst = hostService.getHost(dstId);  //dst address
       Host src = hostService.getHost(srcId);  //src address
 
+
+      // 宣告traffic selector
+      TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
       
       //如果沒有src和dst則return
       if(src == null || dst == null){
@@ -354,9 +387,9 @@ public class AppComponent implements SomeInterface {
       }else{
           
 
-          // 過濾具有對應sourceMAC和DestinationMAC 
+          // 過濾具有對應sourceMAC，且
           selectorBuilder.matchEthSrc(inPkt.getSourceMAC())
-                      .matchEthDst(inPkt.getDestinationMAC());
+                        .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));;
           
           // 宣告要執行的動作
           TrafficTreatment treatment = DefaultTrafficTreatment.builder()
@@ -369,7 +402,7 @@ public class AppComponent implements SomeInterface {
           ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
                       .withSelector(selectorBuilder.build())
                       .withTreatment(treatment)
-                      .withPriority(20)
+                      .withPriority(50000)
                       .withFlag(ForwardingObjective.Flag.VERSATILE)
                       .fromApp(appId)
                       .makeTemporary(20) //timeout
