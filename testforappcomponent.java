@@ -313,6 +313,7 @@ public class AppComponent implements SomeInterface {
                     ethReply.setEtherType(Ethernet.TYPE_ARP);
                     ethReply.setPayload(ARPreply);
 
+
                     // 設定action: 準備輸出，以及輸出的port
                     TrafficTreatment.Builder treatmentbuilder = DefaultTrafficTreatment.builder();
                     treatmentbuilder.setOutput(pkt.receivedFrom().port());
@@ -338,25 +339,32 @@ public class AppComponent implements SomeInterface {
                     log.info("ipv4 with fakeip packet in");
 
                     PortNumber InPort = pkt.receivedFrom().port();
+                    String inport_number_string = InPort.toString();
                     int inport_number = Integer.parseInt(InPort.toString());
 
                     MacAddress srcMac = ethPkt.getSourceMAC();
                     HostId srcID = HostId.hostId(srcMac);
 
-                    log.info("PortNumber = ", inport_number);
-                    if (inport_numbe%2 == 1){
+                    log.info("packet in from port = " + inport_number_string);
+                    log.info("source host ID = " + srcID.toString());
+
+                    if (inport_number%2 == 1){
                         // 分配到h1
-                        PortNumber port_h1 = PortNumber.fromString(1);
-                        HostId dstID = HostId.hostId("A2:FE:75:16:6A:17");
-                        installRule(context, srcID, dstID, port_h1);
+
+                        log.info("assigned to h1.");
+                        PortNumber port_h1 = PortNumber.fromString("1");
+                        HostId dstID = HostId.hostId(MacAddress.valueOf("A2:FE:75:16:6A:17"));
+                        installRule(context, srcID, dstID, InPort, port_h1);
 
                     }
                     else{
                         // 分配到h2
-                        PortNumber port_h2 = PortNumber.fromString(2);
-                        HostId dstID = HostId.hostId("5E:32:AA:00:A3:5A");
 
-                        installRule(context, srcID, dstID, port_h2);
+                        log.info("assigned to h2.");
+                        PortNumber port_h2 = PortNumber.fromString("2");
+                        HostId dstID = HostId.hostId(MacAddress.valueOf("5E:32:AA:00:A3:5A"));
+
+                        installRule(context, srcID, dstID, InPort, port_h2);
                     }
 
                 }
@@ -369,7 +377,7 @@ public class AppComponent implements SomeInterface {
     }
 
 
-    private void installRule(PacketContext context, HostId srcId, HostId dstId,PortNumber outport){
+    private void installRule(PacketContext context, HostId srcId, HostId dstId,PortNumber inport, PortNumber outport){
     
       Ethernet inPkt = context.inPacket().parsed();         // 分析接收到的封包
 
@@ -387,31 +395,38 @@ public class AppComponent implements SomeInterface {
       }else{
           
 
-          // 過濾具有對應sourceMAC，且
-          selectorBuilder.matchEthSrc(inPkt.getSourceMAC())
-                        .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));;
+        // 過濾具有對應sourceMAC，且
+        // selectorBuilder.matchEthSrc(inPkt.getSourceMAC())
+        //             .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
+        
+
+        selectorBuilder.matchInPort(inport)
+                    .matchEthType(Ethernet.TYPE_IPV4)
+                    .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
           
-          // 宣告要執行的動作
-          TrafficTreatment treatment = DefaultTrafficTreatment.builder()
-                      .setOutput(outport)
-                      .build();
+        // 宣告要執行的動作
+
+        TrafficTreatment treatment = DefaultTrafficTreatment.builder()
+                    .setOutput(outport)
+                    .build();
 
 
-          
-          // 根據Lab要求定義flow rule的match field, priority, app id, life time, flag
-          ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
-                      .withSelector(selectorBuilder.build())
-                      .withTreatment(treatment)
-                      .withPriority(50000)
-                      .withFlag(ForwardingObjective.Flag.VERSATILE)
-                      .fromApp(appId)
-                      .makeTemporary(20) //timeout
-                      .add();
-          
-          // install the forwarding rules onto the specific device
-          flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), forwardingObjective);
+        
+        // 根據Lab要求定義flow rule的match field, priority, app id, life time, flag
+        ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
+                    .withSelector(selectorBuilder.build())
+                    .withTreatment(treatment)
+                    .withPriority(50000)
+                    .withFlag(ForwardingObjective.Flag.VERSATILE)
+                    .fromApp(appId)
+                    .makePermanent() //timeout
+                    .add();
+        
+        // install the forwarding rules onto the specific device
+        flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), forwardingObjective);
 
-          packetOut(context, outport);
+        packetOut(context, outport);
+
       }
     }
 
