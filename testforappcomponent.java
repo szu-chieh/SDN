@@ -327,6 +327,7 @@ public class AppComponent implements SomeInterface {
 
                 }
                 
+                
                 log.info("finished arp process");
             } 
             else if (ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
@@ -352,24 +353,31 @@ public class AppComponent implements SomeInterface {
                         // 分配到h1
 
                         log.info("assigned to h1.");
+
+                        // 設定要傳送的port
                         PortNumber port_h1 = PortNumber.fromString("1");
-                        HostId dstID = HostId.hostId(MacAddress.valueOf("A2:FE:75:16:6A:17"));
-                        installRule(context, srcID, dstID, InPort, port_h1);
+                        HostId dstID = HostId.hostId(MacAddress.valueOf("6A:3D:6F:B1:71:92"));   //如果刷新mininet就要重新調整
+                        IpAddress newdstIP = IpAddress.valueOf("10.0.0.1");
+                        MacAddress newdesMAC = MacAddress.valueOf("6A:3D:6F:B1:71:92");
+                        installRule(context, srcID, dstID, InPort, port_h1, newdstIP, newdesMAC);
 
                     }
                     else{
                         // 分配到h2
 
                         log.info("assigned to h2.");
-                        PortNumber port_h2 = PortNumber.fromString("2");
-                        HostId dstID = HostId.hostId(MacAddress.valueOf("5E:32:AA:00:A3:5A"));
 
-                        installRule(context, srcID, dstID, InPort, port_h2);
+                        PortNumber port_h2 = PortNumber.fromString("2");
+                        HostId dstID = HostId.hostId(MacAddress.valueOf("DE:04:39:0B:8A:03"));
+                        IpAddress newdstIP = IpAddress.valueOf("10.0.0.2");
+                        MacAddress newdesMAC = MacAddress.valueOf("DE:04:39:0B:8A:03");
+                        installRule(context, srcID, dstID, InPort, port_h2, newdstIP, newdesMAC);
                     }
 
                 }
                 log.info("finished ipv4 process");
             }
+            
 
             return;
 
@@ -377,15 +385,17 @@ public class AppComponent implements SomeInterface {
     }
 
 
-    private void installRule(PacketContext context, HostId srcId, HostId dstId,PortNumber inport, PortNumber outport){
+    private void installRule(PacketContext context, HostId srcId, HostId dstId,PortNumber inport, PortNumber outport, IpAddress dstIP, MacAddress dstMAC){
     
-      Ethernet inPkt = context.inPacket().parsed();         // 分析接收到的封包
 
+        log.info("flow rules process started!");
 
-      Host dst = hostService.getHost(dstId);  //dst address
-      Host src = hostService.getHost(srcId);  //src address
+        Ethernet inPkt = context.inPacket().parsed();         // 分析接收到的封包
 
-
+        Host dst = hostService.getHost(dstId);  //dst address
+        Host src = hostService.getHost(srcId);  //src address
+      
+        
       // 宣告traffic selector
       TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
       
@@ -396,22 +406,20 @@ public class AppComponent implements SomeInterface {
           
 
         // 過濾具有對應sourceMAC，且
-        // selectorBuilder.matchEthSrc(inPkt.getSourceMAC())
-        //             .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
-        
-
         selectorBuilder.matchInPort(inport)
                     .matchEthType(Ethernet.TYPE_IPV4)
                     .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
-          
+        
+
         // 宣告要執行的動作
 
         TrafficTreatment treatment = DefaultTrafficTreatment.builder()
+                    .setEthDst(dstMAC)
+                    .setIpDst(dstIP)
                     .setOutput(outport)
                     .build();
 
 
-        
         // 根據Lab要求定義flow rule的match field, priority, app id, life time, flag
         ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
                     .withSelector(selectorBuilder.build())
@@ -422,8 +430,36 @@ public class AppComponent implements SomeInterface {
                     .makePermanent() //timeout
                     .add();
         
+
+        log.info("flow rules setting completed!"); 
         // install the forwarding rules onto the specific device
         flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), forwardingObjective);
+
+
+        // 設定反向的flow rules
+        TrafficSelector.Builder selectorBuilder_reverse = DefaultTrafficSelector.builder();
+        selectorBuilder_reverse.matchInPort(outport)
+                        //.matchEthType(Ethernet.TYPE_IPV4);
+                        .matchEthDst(inPkt.getSourceMAC());
+                    //.matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
+
+        TrafficTreatment treatment_reverse = DefaultTrafficTreatment.builder()
+                    .setIpSrc(IpAddress.valueOf("10.0.0.6"))
+                    .setOutput(inport)
+                    .build();
+
+        ForwardingObjective forwardingObjective_reverse = DefaultForwardingObjective.builder()
+                    .withSelector(selectorBuilder_reverse.build())
+                    .withTreatment(treatment_reverse)
+                    .withPriority(50000)
+                    .withFlag(ForwardingObjective.Flag.VERSATILE)
+                    .fromApp(appId)
+                    .makePermanent() //timeout
+                    .add();
+
+        flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), forwardingObjective_reverse);
+
+        log.info("reverse flow rules setting completed!");
 
         packetOut(context, outport);
 
