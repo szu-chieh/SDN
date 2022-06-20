@@ -444,7 +444,7 @@ public class AppComponent implements SomeInterface {
                     //.matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
 
         TrafficTreatment treatment_reverse = DefaultTrafficTreatment.builder()
-                    .setIpSrc(IpAddress.valueOf("10.0.0.6"))
+                    //.setIpSrc(IpAddress.valueOf("10.0.0.6"))
                     .setOutput(inport)
                     .build();
 
