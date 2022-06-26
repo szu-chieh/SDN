@@ -175,6 +175,9 @@ public class AppComponent implements SomeInterface {
     private ApplicationId appId;
     protected Map<DeviceId, Map<MacAddress, PortNumber>> macTables = Maps.newConcurrentMap();
     
+
+    //public host_assign = 0;
+
     ///// What need to be processed after Activate /////
 
     @Activate
@@ -209,7 +212,7 @@ public class AppComponent implements SomeInterface {
         // selector 1: 設定取得ipv4封包
         TrafficSelector.Builder selectorBuilder_getIPv4 = DefaultTrafficSelector.builder();
         selectorBuilder_getIPv4.matchEthType(Ethernet.TYPE_IPV4)
-                        .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
+                        .matchIPDst(IpPrefix.valueOf("172.27.0.114/32"));
 
         
         // 宣告flowrule物件
@@ -219,14 +222,14 @@ public class AppComponent implements SomeInterface {
         .withPriority(30)  // 設定高priority讓rule之後能夠優先執行
         .withFlag(ForwardingObjective.Flag.VERSATILE)
         .fromApp(appId)
-        .makePermanent() //timeout
+        .makeTemporary(20) //timeout
         .add();
 
         log.info("Setting Flow rule of get IP packet with Fake IP: Done!");
         
         // 在該封包進來的device上安裝flow rules
         // 假設此封包從sw1進到controller，則在sw1讓安裝該flow rule，讓之後所有經過sw1且destination ip=fake ip的封包都從設定好的port傳出去
-        flowObjectiveService.forward(DeviceId.deviceId("of:0000000000000001"), forwardingObjective_IPPacket);
+        flowObjectiveService.forward(DeviceId.deviceId("of:00000000000000a0"), forwardingObjective_IPPacket);
         log.info("Flow rule: getting IP packet with Fake IP installed!");
 
         // selector 2: 設定取得arp封包 (這邊直接取得所有的arp封包就行)
@@ -274,6 +277,10 @@ public class AppComponent implements SomeInterface {
             InboundPacket pkt = context.inPacket();
             Ethernet ethPkt = pkt.parsed();
 
+            log.info("===== packet informations =====");
+            log.info("packet in from port: " + pkt.receivedFrom().port().toString());
+            log.info("source MacAddress:" + ethPkt.getSourceMAC());
+            log.info("===============================");
         
 
             if (ethPkt == null) {
@@ -287,15 +294,17 @@ public class AppComponent implements SomeInterface {
             // 這邊進行arp reply只是因為這是一個必要的回覆過程，否則arp的要求會一直懸在網路環境中
             if (ethPkt.getEtherType() == Ethernet.TYPE_ARP) {
 
-                log.info("get ARP packet!");
+                //log.info("get ARP packet!");
 
                 // 分析arp request packet
                 ARP ARPrequest = (ARP) ethPkt.getPayload(); // 解開ethernet packet取得arp payload
                 IpAddress dstIP = IpAddress.valueOf(IpAddress.Version.valueOf("INET"), ARPrequest.getTargetProtocolAddress());
                 
+
+
                 // 確認dstip是送往fake ip且為arp request
-                if (dstIP.equals(IpAddress.valueOf("10.0.0.6")) && ARPrequest.getOpCode() == ARP.OP_REQUEST) {
-                    log.info("get ARP request packet.");
+                if (dstIP.equals(IpAddress.valueOf("172.27.0.114")) && ARPrequest.getOpCode() == ARP.OP_REQUEST) {
+                    log.info("get ARP request packet which destination IP equals to fake IP.");
 
                     // set ARP reply packet, 這邊大部份的資訊可以直接從request封包中取得，重點是要設定假的Mac address
                     // 要注意request封包的來源位置對於reply來說是dst address
@@ -305,6 +314,8 @@ public class AppComponent implements SomeInterface {
                     ARPreply.setTargetHardwareAddress(ARPrequest.getSenderHardwareAddress());
                     ARPreply.setSenderProtocolAddress(ARPrequest.getTargetProtocolAddress());
                     ARPreply.setSenderHardwareAddress(MacAddress.valueOf("1B:AA:4D:E2:F4:B5").toBytes());
+
+                    log.info("given a fake macaddress => 1B:AA:4D:E2:F4:B5 as response.");
 
                     // 將設定好的arp packet打包成ethernet
                     Ethernet ethReply = new Ethernet();
@@ -324,11 +335,11 @@ public class AppComponent implements SomeInterface {
                     
                     // 把arp reply封包送出controller
                     packetService.emit(outpacket);
-
+                    
+                    log.info("finished arp process");
                 }
                 
-                
-                log.info("finished arp process");
+            
             } 
             else if (ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
 
@@ -336,43 +347,46 @@ public class AppComponent implements SomeInterface {
                 IPv4 ipacket = (IPv4) ethPkt.getPayload();
 
                 // 若接收到帶有fake ip的ipv4封包則install flow rules
-                if(ipacket.getDestinationAddress() == Ip4Address.valueOf("10.0.0.6").toInt()){
+                if(ipacket.getDestinationAddress() == Ip4Address.valueOf("172.27.0.114").toInt()){
                     log.info("ipv4 with fakeip packet in");
 
-                    PortNumber InPort = pkt.receivedFrom().port();
-                    String inport_number_string = InPort.toString();
-                    int inport_number = Integer.parseInt(InPort.toString());
+                //     PortNumber InPort = pkt.receivedFrom().port();
+                //     String inport_number_string = InPort.toString();
+                //     int inport_number = Integer.parseInt(InPort.toString());
 
-                    MacAddress srcMac = ethPkt.getSourceMAC();
-                    HostId srcID = HostId.hostId(srcMac);
+                //     MacAddress srcMac = ethPkt.getSourceMAC();
+                //     HostId srcID = HostId.hostId(srcMac);
 
-                    log.info("packet in from port = " + inport_number_string);
-                    log.info("source host ID = " + srcID.toString());
+                //     log.info("packet in from port = " + inport_number_string);
+                //     log.info("source host ID = " + srcID.toString());
 
-                    if (inport_number%2 == 1){
-                        // 分配到h1
+                //     if (host_assign == 0){
+                //         // 分配到vm1
 
-                        log.info("assigned to h1.");
+                //         log.info("assigned to vm1.");
 
-                        // 設定要傳送的port
-                        PortNumber port_h1 = PortNumber.fromString("1");
-                        HostId dstID = HostId.hostId(MacAddress.valueOf("6A:3D:6F:B1:71:92"));   //如果刷新mininet就要重新調整
-                        IpAddress newdstIP = IpAddress.valueOf("10.0.0.1");
-                        MacAddress newdesMAC = MacAddress.valueOf("6A:3D:6F:B1:71:92");
-                        installRule(context, srcID, dstID, InPort, port_h1, newdstIP, newdesMAC);
+                //         // 設定要傳送的port
+                //         PortNumber port_h1 = PortNumber.fromString("1");
+                //         HostId dstID = HostId.hostId(MacAddress.valueOf("fa:16:3e:8a:fa:ac"));   //如果刷新mininet就要重新調整
+                //         IpAddress newdstIP = IpAddress.valueOf("172.27.0.34");
+                //         MacAddress newdesMAC = MacAddress.valueOf("fa:16:3e:8a:fa:ac");
+                //         installRule(context, srcID, dstID, InPort, port_h1, newdstIP, newdesMAC);
 
-                    }
-                    else{
-                        // 分配到h2
+                //         host_assign = 1;
+                //     }
+                //     else{
+                //         // 分配到vm2
 
-                        log.info("assigned to h2.");
+                //         log.info("assigned to vm2.");
 
-                        PortNumber port_h2 = PortNumber.fromString("2");
-                        HostId dstID = HostId.hostId(MacAddress.valueOf("DE:04:39:0B:8A:03"));
-                        IpAddress newdstIP = IpAddress.valueOf("10.0.0.2");
-                        MacAddress newdesMAC = MacAddress.valueOf("DE:04:39:0B:8A:03");
-                        installRule(context, srcID, dstID, InPort, port_h2, newdstIP, newdesMAC);
-                    }
+                //         PortNumber port_h2 = PortNumber.fromString("2");
+                //         HostId dstID = HostId.hostId(MacAddress.valueOf("fa:16:3e:47:86:9e"));
+                //         IpAddress newdstIP = IpAddress.valueOf("172.27.0.55");
+                //         MacAddress newdesMAC = MacAddress.valueOf("fa:16:3e:47:86:9e");
+                //         installRule(context, srcID, dstID, InPort, port_h2, newdstIP, newdesMAC);
+
+                //         host_assign = 0;
+                //     }
 
                 }
                 log.info("finished ipv4 process");
@@ -408,7 +422,7 @@ public class AppComponent implements SomeInterface {
         // 過濾具有對應sourceMAC，且
         selectorBuilder.matchInPort(inport)
                     .matchEthType(Ethernet.TYPE_IPV4)
-                    .matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
+                    .matchIPDst(IpPrefix.valueOf("172.27.0.114/32"));
         
 
         // 宣告要執行的動作
@@ -439,12 +453,9 @@ public class AppComponent implements SomeInterface {
         // 設定反向的flow rules
         TrafficSelector.Builder selectorBuilder_reverse = DefaultTrafficSelector.builder();
         selectorBuilder_reverse.matchInPort(outport)
-                        //.matchEthType(Ethernet.TYPE_IPV4);
                         .matchEthDst(inPkt.getSourceMAC());
-                    //.matchIPDst(IpPrefix.valueOf("10.0.0.6/32"));
 
         TrafficTreatment treatment_reverse = DefaultTrafficTreatment.builder()
-                    //.setIpSrc(IpAddress.valueOf("10.0.0.6"))
                     .setOutput(inport)
                     .build();
 
